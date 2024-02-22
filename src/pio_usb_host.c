@@ -31,6 +31,8 @@ static __unused uint32_t int_stat;
 
 static bool sof_timer(repeating_timer_t *_rt);
 
+void (*pio_usb_host_enumerate_device_cb)(const usb_device_t *) = NULL;
+
 //--------------------------------------------------------------------+
 // Application API
 //--------------------------------------------------------------------+
@@ -858,35 +860,42 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
                              (uint8_t const *)&ep0_desc,
                              !device->is_root && !device->is_fullspeed);
 
-  uint8_t str[64];
+  strcpy(device->manufacturer, "");
   if (idx_manufacture != 0) {
-    res = get_string_descriptor(device, idx_manufacture, rx_buffer, str);
+    res = get_string_descriptor(device, idx_manufacture, rx_buffer, (uint8_t *)device->manufacturer);
     if (res == 0) {
-      printf("Manufacture:%s\n", str);
+	printf("Manufacturer:%s\n", device->manufacturer);
     } else {
-      printf("Failed to get string descriptor (Manufacture)\n");
+      printf("Failed to get string descriptor (Manufacturer)\n");
+      stdio_flush();
     }
-    stdio_flush();
-  }
+  } 
 
+  strcpy(device->product, "");
   if (idx_product != 0) {
-    res = get_string_descriptor(device, idx_product, rx_buffer, str);
+    res = get_string_descriptor(device, idx_product, rx_buffer, (uint8_t *)device->product);
     if (res == 0) {
-      printf("Product:%s\n", str);
+      printf("Product:%s\n", device->product);
     } else {
       printf("Failed to get string descriptor (Product)\n");
+      stdio_flush();
     }
-    stdio_flush();
   }
 
+
+  strcpy(device->serial, "");
   if (idx_serial != 0) {
-    res = get_string_descriptor(device, idx_serial, rx_buffer, str);
+    res = get_string_descriptor(device, idx_serial, rx_buffer, (uint8_t *)device->serial);
     if (res == 0) {
-      printf("Serial:%s\n", str);
+	printf("Serial:%s\n", device->serial);
     } else {
       printf("Failed to get string descriptor (Serial)\n");
+      stdio_flush();
     }
-    stdio_flush();
+  }
+
+  if (pio_usb_host_enumerate_device_cb) {
+      pio_usb_host_enumerate_device_cb(device);
   }
 
   usb_setup_packet_t get_configuration_descriptor_request =
@@ -937,6 +946,13 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
   volatile uint8_t ep_id_idx = 0;
   volatile uint8_t interface = 0;
   volatile uint8_t class = 0;
+  volatile uint8_t subclass = 0;
+  volatile uint8_t protocol = 0;
+
+  // retain interface descriptor array for setting endpoint interface params
+  //interface_descriptor_t iface_descriptor[PIO_USB_EP_POOL_CNT];
+  //uint8_t iface_count = 0;
+
   uint8_t *descriptor = configuration_descrptor_data;
   while (configuration_descrptor_length > 0) {
     switch (descriptor[1]) {
@@ -948,8 +964,13 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
             "iprotcol:%d, iface:%d\n",
             d->inum, d->altsetting, d->numep, d->iclass, d->isubclass,
             d->iprotocol, d->iface);
+
         interface = d->inum;
         class = d->iclass;
+	subclass = d->isubclass;
+	protocol = d->iprotocol;
+
+	//iface_descriptor[iface_count++] = *d;
       } break;
       case DESC_TYPE_ENDPOINT: {
         const endpoint_descriptor_t *d =
@@ -982,6 +1003,10 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
             ep->dev_addr = device->address;
             ep->need_pre = !device->is_root && !device->is_fullspeed;
             ep->is_tx = (d->epaddr & 0x80) ? false : true;
+	    ep->interface = interface;
+	    ep->iclass = class;
+	    ep->isubclass = subclass;
+	    ep->iprotocol = protocol;
           } else {
             printf("No empty EP\n");
           }
@@ -1033,6 +1058,20 @@ static int enumerate_device(usb_device_t *device, uint8_t address) {
       break;
     }
     ep->attr &= ~EP_ATTR_ENUMERATING;
+
+    /*
+    // for each endpoint, assign params from matching interface descriptors
+    for (int ifidx=0; ifidx<iface_count; ifidx++) {
+	if (iface_descriptor[ifidx].epaddr == ep->ep_num) {
+	    ep->interface = iface_descriptor[ifidx].inum;
+	    ep->iclass = iface_descriptor[ifidx].iclass;
+	    ep->isubclass = iface_descriptor[ifidx].isubclass;
+	    ep->iprotocol = iface_descriptor[ifidx].iprotocol;
+	    printf("\t\t\tep:%02x iface:%02x, iclass:%02x isubclass:%02x iprotocol:%02x\n",
+		ep->ep_num, ep->interface, ep->iclass, ep->isubclass, ep->iprotocol);
+	}
+    }
+    */
 
     // prepare transfer
     if (ep->ep_num & EP_IN) {
@@ -1348,3 +1387,4 @@ static void __no_inline_not_in_flash_func(__pio_usb_host_irq_handler)(uint8_t ro
 void pio_usb_host_irq_handler(uint8_t root_id) __attribute__ ((weak, alias("__pio_usb_host_irq_handler")));
 
 #pragma GCC pop_options
+

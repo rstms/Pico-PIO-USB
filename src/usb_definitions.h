@@ -56,6 +56,13 @@ typedef struct {
 typedef struct {
   volatile uint8_t root_idx;
   volatile uint8_t dev_addr;
+
+  volatile uint8_t address;
+  volatile uint8_t interface;
+  volatile uint8_t iclass;
+  volatile uint8_t isubclass;
+  volatile uint8_t iprotocol;
+
   bool need_pre;
   bool is_tx; // Host out or Device in
 
@@ -109,6 +116,7 @@ typedef struct struct_root_port_t {
   // device only
   uint8_t dev_addr;
   uint8_t *setup_packet;
+
 } root_port_t;
 
 struct struct_usb_device_t {
@@ -127,6 +135,9 @@ struct struct_usb_device_t {
   struct struct_usb_device_t *parent_device;
   uint8_t parent_port;
   root_port_t *root;
+  char manufacturer[64];
+  char product[64];
+  char serial[64];
 };
 
 enum {

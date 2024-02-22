@@ -29,6 +29,9 @@ endpoint_t *pio_usb_get_endpoint(usb_device_t *device, uint8_t idx);
 int pio_usb_get_in_data(endpoint_t *ep, uint8_t *buffer, uint8_t len);
 int pio_usb_set_out_data(endpoint_t *ep, const uint8_t *buffer, uint8_t len);
 
+// device enumeration callback
+extern void (*pio_usb_host_enumerate_device_cb)(const usb_device_t *device);
+
 #ifdef __cplusplus
  }
 #endif
